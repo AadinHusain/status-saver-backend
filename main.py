@@ -70,10 +70,21 @@ def download(request: VideoRequest):
         options = {
             "quiet": True,
             "no_warnings": True,
-            # Single pre-merged MP4 stream preferred to avoid FFmpeg dependency issues on Render
             "format": "best[ext=mp4]/bestvideo+bestaudio/best",
             "merge_output_format": "mp4",
-            "outtmpl": output_template
+            "outtmpl": output_template,
+            
+            # --- YouTube Bot Detection Bypasses ---
+            "extractor_args": {
+                "youtube": {
+                    # Rotate player client types (android client circumvents cloud IP blocks)
+                    "player_client": ["android", "ios", "mweb"]
+                }
+            },
+            "http_headers": {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Accept-Language": "en-US,en;q=0.9"
+            }
         }
 
         with yt_dlp.YoutubeDL(options) as ydl:
@@ -82,7 +93,7 @@ def download(request: VideoRequest):
                 download=True
             )
 
-        # Locate the downloaded file (accounting for possible extension variations)
+        # Locate the downloaded file
         downloaded_file = None
         for file in os.listdir(DOWNLOADS_DIR):
             if file.startswith(video_id):

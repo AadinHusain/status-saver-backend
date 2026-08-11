@@ -72,8 +72,6 @@ def download(request: VideoRequest):
             "no_warnings": True,
             "format": "b/best/bestvideo+bestaudio",
             "outtmpl": output_template,
-            
-            # YouTube Extractor configuration (bypasses bot checks without crashing dependencies)
             "extractor_args": {
                 "youtube": {
                     "player_client": ["android", "ios", "mweb"]
@@ -85,7 +83,7 @@ def download(request: VideoRequest):
             }
         }
 
-        # Include cookies.txt if present
+        # Authenticate via cookies.txt if present in the backend directory
         if os.path.exists(COOKIE_FILE):
             options["cookiefile"] = COOKIE_FILE
 

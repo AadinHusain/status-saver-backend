@@ -2,4 +2,3 @@ fastapi
 uvicorn
 yt-dlp
 pydantic
-curl-cffi

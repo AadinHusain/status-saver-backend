@@ -70,23 +70,25 @@ def download(request: VideoRequest):
         options = {
             "quiet": True,
             "no_warnings": True,
-            # Universal fallback format: selects best single stream or best available video+audio
             "format": "b/best/bestvideo+bestaudio",
             "outtmpl": output_template,
             
-            # YouTube bot detection bypasses
+            # Impersonate a real browser's TLS signature to bypass cloud IP blocks
+            "impersonate": "chrome",
+            
+            # YouTube Extractor configuration
             "extractor_args": {
                 "youtube": {
-                    "player_client": ["android", "ios", "mweb"]
+                    "player_client": ["web_creator", "mweb", "android"]
                 }
             },
             "http_headers": {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
                 "Accept-Language": "en-US,en;q=0.9"
             }
         }
 
-        # Use cookies.txt if present
+        # Include cookies.txt if present
         if os.path.exists(COOKIE_FILE):
             options["cookiefile"] = COOKIE_FILE
 
@@ -96,7 +98,6 @@ def download(request: VideoRequest):
                 download=True
             )
 
-        # Find the downloaded file regardless of final extension (.mp4, .webm, etc.)
         downloaded_file = None
         for file in os.listdir(DOWNLOADS_DIR):
             if file.startswith(video_id):
@@ -141,7 +142,6 @@ def get_file(filename: str):
             "message": "File not found"
         }
 
-    # Dynamically return proper media type
     media_type = "video/webm" if filename.endswith(".webm") else "video/mp4"
 
     return FileResponse(

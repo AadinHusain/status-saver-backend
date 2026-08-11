@@ -11,6 +11,7 @@ app = FastAPI()
 
 # Ensure the downloads directory exists when server starts
 DOWNLOADS_DIR = "downloads"
+COOKIE_FILE = "cookies.txt"
 os.makedirs(DOWNLOADS_DIR, exist_ok=True)
 
 
@@ -74,18 +75,22 @@ def download(request: VideoRequest):
             "merge_output_format": "mp4",
             "outtmpl": output_template,
             
-            # --- YouTube Bot Detection Bypasses ---
+            # --- YouTube Extraction & Authentication Configuration ---
             "extractor_args": {
                 "youtube": {
-                    # Rotate player client types (android client circumvents cloud IP blocks)
-                    "player_client": ["android", "ios", "mweb"]
+                    # Uses TV/Embedded player clients which bypass standard bot checks on datacenter IPs
+                    "player_client": ["tvembedded", "android_creator", "mweb"]
                 }
             },
             "http_headers": {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
                 "Accept-Language": "en-US,en;q=0.9"
             }
         }
+
+        # If cookies.txt exists in root directory, use it to authenticate requests
+        if os.path.exists(COOKIE_FILE):
+            options["cookiefile"] = COOKIE_FILE
 
         with yt_dlp.YoutubeDL(options) as ydl:
             info = ydl.extract_info(

@@ -9,7 +9,6 @@ import yt_dlp
 
 app = FastAPI()
 
-# Ensure the downloads directory exists when server starts
 DOWNLOADS_DIR = "downloads"
 COOKIE_FILE = "cookies.txt"
 os.makedirs(DOWNLOADS_DIR, exist_ok=True)
@@ -71,15 +70,14 @@ def download(request: VideoRequest):
         options = {
             "quiet": True,
             "no_warnings": True,
-            "format": "best[ext=mp4]/bestvideo+bestaudio/best",
-            "merge_output_format": "mp4",
+            # Universal fallback format: selects best single stream or best available video+audio
+            "format": "b/best/bestvideo+bestaudio",
             "outtmpl": output_template,
             
-            # --- YouTube Extraction & Authentication Configuration ---
+            # YouTube bot detection bypasses
             "extractor_args": {
                 "youtube": {
-                    # Uses TV/Embedded player clients which bypass standard bot checks on datacenter IPs
-                    "player_client": ["tvembedded", "android_creator", "mweb"]
+                    "player_client": ["android", "ios", "mweb"]
                 }
             },
             "http_headers": {
@@ -88,7 +86,7 @@ def download(request: VideoRequest):
             }
         }
 
-        # If cookies.txt exists in root directory, use it to authenticate requests
+        # Use cookies.txt if present
         if os.path.exists(COOKIE_FILE):
             options["cookiefile"] = COOKIE_FILE
 
@@ -98,7 +96,7 @@ def download(request: VideoRequest):
                 download=True
             )
 
-        # Locate the downloaded file
+        # Find the downloaded file regardless of final extension (.mp4, .webm, etc.)
         downloaded_file = None
         for file in os.listdir(DOWNLOADS_DIR):
             if file.startswith(video_id):
@@ -143,8 +141,11 @@ def get_file(filename: str):
             "message": "File not found"
         }
 
+    # Dynamically return proper media type
+    media_type = "video/webm" if filename.endswith(".webm") else "video/mp4"
+
     return FileResponse(
         file_path,
-        media_type="video/mp4",
+        media_type=media_type,
         filename=filename
     )

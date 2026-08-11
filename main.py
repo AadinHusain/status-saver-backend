@@ -6,7 +6,6 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 import yt_dlp
-from yt_dlp.networking.impersonate import ImpersonateTarget
 
 app = FastAPI()
 
@@ -74,9 +73,7 @@ def download(request: VideoRequest):
             "format": "b/best/bestvideo+bestaudio",
             "outtmpl": output_template,
             
-            # Convert the string target into yt-dlp's ImpersonateTarget object
-            "impersonate": ImpersonateTarget.from_str("chrome"),
-            
+            # YouTube Extractor configuration (bypasses bot checks without crashing dependencies)
             "extractor_args": {
                 "youtube": {
                     "player_client": ["android", "ios", "mweb"]

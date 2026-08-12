@@ -1,4 +1,3 @@
-```python
 import os
 import uuid
 from urllib.parse import urlparse
@@ -204,4 +203,3 @@ def get_file(filename: str):
         media_type=media_type,
         filename=filename
     )
-```

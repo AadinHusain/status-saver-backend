@@ -81,7 +81,10 @@ def download(request: VideoRequest):
             "verbose": True,
 
             # Download best available combination
-            "format": "b/best/bestvideo+bestaudio",
+            # "format": "b/best/bestvideo+bestaudio",
+
+            "format": "bv*+ba/b",
+            "merge_output_format": "mp4",
 
             # Output filename
             "outtmpl": output_template,

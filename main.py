@@ -1,28 +1,28 @@
 import os
-import re
 from urllib.parse import urlparse
 
 import yt_dlp
 from fastapi import FastAPI
 from pydantic import BaseModel
 
+
 app = FastAPI(
     title="Status Saver API",
-    version="2.0.0"
+    version="2.0.1"
 )
 
 
-# --------------------------------------------------
+# ============================================================
 # REQUEST MODEL
-# --------------------------------------------------
+# ============================================================
 
 class VideoRequest(BaseModel):
     url: str
 
 
-# --------------------------------------------------
+# ============================================================
 # PLATFORM DETECTION
-# --------------------------------------------------
+# ============================================================
 
 def detect_platform(url: str):
 
@@ -37,19 +37,27 @@ def detect_platform(url: str):
         if hostname.startswith("www."):
             hostname = hostname[4:]
 
-        if hostname == "instagram.com" or hostname.endswith(".instagram.com"):
+        # Instagram
+        if (
+            hostname == "instagram.com"
+            or hostname.endswith(".instagram.com")
+        ):
             return "instagram"
 
-        if hostname == "facebook.com" or hostname.endswith(".facebook.com"):
+        # Facebook
+        if (
+            hostname == "facebook.com"
+            or hostname.endswith(".facebook.com")
+            or hostname == "fb.watch"
+        ):
             return "facebook"
 
-        if hostname == "fb.watch":
-            return "facebook"
-
-        if hostname == "pin.it":
-            return "pinterest"
-
-        if hostname == "pinterest.com" or hostname.endswith(".pinterest.com"):
+        # Pinterest
+        if (
+            hostname == "pin.it"
+            or hostname == "pinterest.com"
+            or hostname.endswith(".pinterest.com")
+        ):
             return "pinterest"
 
         return "unsupported"
@@ -58,23 +66,23 @@ def detect_platform(url: str):
         return "invalid"
 
 
-# --------------------------------------------------
-# BASIC URL CLEANING
-# --------------------------------------------------
+# ============================================================
+# URL CLEANING
+# ============================================================
 
 def clean_url(url: str) -> str:
 
     url = url.strip()
 
-    # Remove surrounding quotes if accidentally copied
+    # Remove accidental quotes
     url = url.strip("\"'")
 
     return url
 
 
-# --------------------------------------------------
-# FIND BEST DIRECT MP4
-# --------------------------------------------------
+# ============================================================
+# FIND BEST DIRECT VIDEO FORMAT
+# ============================================================
 
 def find_best_format(info):
 
@@ -92,24 +100,31 @@ def find_best_format(info):
         ext = (fmt.get("ext") or "").lower()
         protocol = (fmt.get("protocol") or "").lower()
 
-        # We want an already playable video file.
-        # Avoid separate video-only + audio-only streams
-        # because that would require server-side merging.
-        has_video = fmt.get("vcodec") not in (None, "none")
-        has_audio = fmt.get("acodec") not in (None, "none")
+        vcodec = fmt.get("vcodec")
+        acodec = fmt.get("acodec")
 
+        has_video = vcodec not in (None, "none")
+        has_audio = acodec not in (None, "none")
+
+        # We want a ready-to-play file.
+        # This avoids server-side merging.
         if not has_video or not has_audio:
             continue
 
-        # Prefer MP4
-        mp4_score = 1 if ext == "mp4" else 0
-
-        # Prefer normal HTTP/HTTPS media URLs
-        direct_score = 1 if protocol in ("http", "https") else 0
-
         width = fmt.get("width") or 0
         height = fmt.get("height") or 0
-        filesize = fmt.get("filesize") or fmt.get("filesize_approx") or 0
+
+        filesize = (
+            fmt.get("filesize")
+            or fmt.get("filesize_approx")
+            or 0
+        )
+
+        mp4_score = 1 if ext == "mp4" else 0
+
+        direct_score = (
+            1 if protocol in ("http", "https") else 0
+        )
 
         candidates.append({
             "url": media_url,
@@ -118,8 +133,8 @@ def find_best_format(info):
             "height": height,
             "filesize": filesize,
             "format_id": fmt.get("format_id"),
-            "vcodec": fmt.get("vcodec"),
-            "acodec": fmt.get("acodec"),
+            "vcodec": vcodec,
+            "acodec": acodec,
             "mp4_score": mp4_score,
             "direct_score": direct_score
         })
@@ -127,11 +142,12 @@ def find_best_format(info):
     if not candidates:
         return None
 
-    # Prefer:
+    # Priority:
+    #
     # 1. MP4
-    # 2. Direct HTTP/HTTPS
+    # 2. HTTP/HTTPS
     # 3. Highest resolution
-    # 4. Highest filesize when resolution is equal
+    # 4. Largest file when resolution is equal
 
     candidates.sort(
         key=lambda x: (
@@ -147,9 +163,9 @@ def find_best_format(info):
     return candidates[0]
 
 
-# --------------------------------------------------
-# API
-# --------------------------------------------------
+# ============================================================
+# HOME
+# ============================================================
 
 @app.get("/")
 def home():
@@ -157,7 +173,7 @@ def home():
     return {
         "success": True,
         "message": "Status Saver API is working",
-        "version": "2.0.0",
+        "version": "2.0.1",
         "platforms": [
             "instagram",
             "facebook",
@@ -166,9 +182,9 @@ def home():
     }
 
 
-# --------------------------------------------------
-# EXTRACT
-# --------------------------------------------------
+# ============================================================
+# EXTRACT MEDIA
+# ============================================================
 
 @app.post("/extract")
 def extract(request: VideoRequest):
@@ -176,6 +192,10 @@ def extract(request: VideoRequest):
     url = clean_url(request.url)
 
     platform = detect_platform(url)
+
+    # --------------------------------------------------------
+    # URL VALIDATION
+    # --------------------------------------------------------
 
     if platform == "invalid":
 
@@ -195,39 +215,45 @@ def extract(request: VideoRequest):
             )
         }
 
-    print("=" * 60)
+    print("=" * 70)
     print("EXTRACT REQUEST")
     print("Platform:", platform)
     print("URL:", url)
-    print("=" * 60)
+    print("=" * 70)
+
+    # --------------------------------------------------------
+    # YT-DLP OPTIONS
+    # --------------------------------------------------------
 
     options = {
 
-        # IMPORTANT:
-        # We only extract information.
-        # We DO NOT download the video on Render.
+        # Extraction only.
+        # Render does NOT download the video.
+        "skip_download": True,
+
         "quiet": True,
+
         "no_warnings": True,
 
         "noplaylist": True,
 
-        # Don't create cache files on Render
+        # Don't create a yt-dlp cache on Render.
         "cachedir": False,
-
-        # Don't write files
-        "skip_download": True,
 
         # Prefer a ready-to-play MP4.
         #
-        # We intentionally avoid:
+        # We deliberately avoid:
+        #
         # bestvideo+bestaudio
         #
-        # because that would require merging.
+        # because that requires downloading and merging
+        # separate streams.
         "format": (
             "best[ext=mp4][vcodec!=none][acodec!=none]"
             "/best[vcodec!=none][acodec!=none]"
         ),
 
+        # Browser-like headers.
         "http_headers": {
             "User-Agent": (
                 "Mozilla/5.0 (Linux; Android 13) "
@@ -239,14 +265,29 @@ def extract(request: VideoRequest):
         }
     }
 
-    # Optional cookies.
+    # --------------------------------------------------------
+    # OPTIONAL COOKIE FILE
+    # --------------------------------------------------------
     #
-    # Only use cookies if you are legitimately authorized
-    # to access the content they provide access to.
+    # Only use cookies when you are authorized to access
+    # the content associated with them.
+    # --------------------------------------------------------
+
     cookie_file = "cookies.txt"
 
     if os.path.exists(cookie_file):
+
         options["cookiefile"] = cookie_file
+
+        print("Cookie file detected.")
+
+    else:
+
+        print("No cookie file detected.")
+
+    # --------------------------------------------------------
+    # EXTRACTION
+    # --------------------------------------------------------
 
     try:
 
@@ -259,21 +300,31 @@ def extract(request: VideoRequest):
 
         if not info:
 
+            print("No extraction information returned.")
+
             return {
                 "success": False,
                 "platform": platform,
                 "message": "Could not extract media information."
             }
 
-        # If extractor returns a direct URL
-        # use it as a possible candidate.
+        # ----------------------------------------------------
+        # FIND DIRECT VIDEO FORMAT
+        # ----------------------------------------------------
+
         best = find_best_format(info)
+
+        # ----------------------------------------------------
+        # FALLBACK TO TOP-LEVEL URL
+        # ----------------------------------------------------
 
         if not best and info.get("url"):
 
+            media_url = info.get("url")
+
             best = {
-                "url": info.get("url"),
-                "ext": info.get("ext"),
+                "url": media_url,
+                "ext": info.get("ext") or "mp4",
                 "width": info.get("width") or 0,
                 "height": info.get("height") or 0,
                 "filesize": (
@@ -286,7 +337,23 @@ def extract(request: VideoRequest):
                 "acodec": info.get("acodec")
             }
 
+        # ----------------------------------------------------
+        # NO DIRECT FORMAT
+        # ----------------------------------------------------
+
         if not best:
+
+            print("=" * 70)
+            print("NO DIRECT VIDEO FORMAT")
+            print("Platform:", platform)
+            print("Extractor:", info.get("extractor"))
+            print("Extractor key:", info.get("extractor_key"))
+            print("Title:", info.get("title"))
+            print(
+                "Available formats:",
+                len(info.get("formats") or [])
+            )
+            print("=" * 70)
 
             return {
                 "success": False,
@@ -297,11 +364,34 @@ def extract(request: VideoRequest):
                 )
             }
 
-        title = info.get("title") or "Status Saver Video"
+        # ----------------------------------------------------
+        # METADATA
+        # ----------------------------------------------------
+
+        title = (
+            info.get("title")
+            or "Status Saver Video"
+        )
 
         thumbnail = info.get("thumbnail")
 
         duration = info.get("duration")
+
+        # ----------------------------------------------------
+        # SUCCESS
+        # ----------------------------------------------------
+
+        print("=" * 70)
+        print("EXTRACTION SUCCESS")
+        print("Platform:", platform)
+        print("Title:", title)
+        print("Format:", best.get("ext"))
+        print("Resolution:",
+              best.get("width"),
+              "x",
+              best.get("height"))
+        print("Format ID:", best.get("format_id"))
+        print("=" * 70)
 
         return {
 
@@ -319,35 +409,65 @@ def extract(request: VideoRequest):
 
             "height": best.get("height"),
 
-            "extension": best.get("ext") or "mp4",
+            "extension": (
+                best.get("ext")
+                or "mp4"
+            ),
 
             "filesize": best.get("filesize"),
 
             "format_id": best.get("format_id"),
 
-            # IMPORTANT:
-            # Android downloads this URL directly.
+            # Android will download this directly.
             "media_url": best["url"],
 
-            "message": "Media is ready for direct download."
+            "message": (
+                "Media is ready for direct download."
+            )
         }
+
+    # --------------------------------------------------------
+    # YT-DLP ERROR
+    # --------------------------------------------------------
 
     except yt_dlp.utils.DownloadError as e:
 
-        print("yt-dlp error:", str(e))
+        error_message = str(e)
 
+        # IMPORTANT:
+        # This appears in Render logs so we can diagnose
+        # the real problem.
+        print("=" * 70)
+        print("YT-DLP EXTRACTION ERROR")
+        print("Platform:", platform)
+        print("URL:", url)
+        print("ERROR:", error_message)
+        print("=" * 70)
+
+        # Don't expose the full internal error to users.
         return {
             "success": False,
             "platform": platform,
             "message": (
-                "This media could not be downloaded or "
+                "This media could not be accessed or "
                 "is not available for direct download."
             )
         }
 
+    # --------------------------------------------------------
+    # UNEXPECTED ERROR
+    # --------------------------------------------------------
+
     except Exception as e:
 
-        print("Unexpected error:", str(e))
+        error_message = str(e)
+
+        print("=" * 70)
+        print("UNEXPECTED EXTRACTION ERROR")
+        print("Platform:", platform)
+        print("URL:", url)
+        print("ERROR:", error_message)
+        print("=" * 70)
 
         return {
             "success": False,

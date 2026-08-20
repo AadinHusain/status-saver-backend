@@ -1,4 +1,3 @@
 fastapi
-uvicorn
-yt-dlp[default]
-pydantic
+uvicorn[standard]
+yt-dlp
